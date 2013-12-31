@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include "config.h"
+#include "cmath"
 using namespace std;
 
 const int dic[81][2]={{0, 0},{-1, 0},{1, 0},{0, -1},{0, 1},{-1, -1},{-1, 1},{1, -1},{1, 1},
@@ -12,37 +13,54 @@ const int dic[81][2]={{0, 0},{-1, 0},{1, 0},{0, -1},{0, 1},{-1, -1},{-1, 1},{1, 
 					  {-3, -4},{3, -4},{0, 4},{-1, 4},{1, 4},{-2, 4},{2, 4},{-3, 4},{3, 4},{-4, -4},{-4, 4},{4, -4},{4, 4}};
 unsigned long Node::count = 0;
 
-Node::Node(Node* parent, bool lr): p(parent), l(NULL), r(NULL), id(parent ? parent->id * 2 + lr : 1), isLeaf(true), occ(0), app(0), prob(-1)
+Node::Node(Node* parent, bool lr): p(parent), l(NULL), r(NULL), id(parent ? parent->id * 2 + lr : 1), isLeaf(true), occ(0)
 {
 	count ++;
+	for(int i = 0; i < 16; i ++)
+	{
+		app[i] = 0;
+		prob[i] = 0;
+	}
 }
 
-void Node::update()
+
+void Node::insert(unsigned long long con, int grid)
 {
-	if(l)
+	if(isLeaf)
 	{
-		l->update();
-		r->update();
-	}
-	else
-	{
-		double prob = 0;
-		if(occ) prob = (app + 0.0) / occ;
-		if(prob > THRE && prob < 1- THRE)
+		if(id == con)
 		{
-			if(occ > 20)
+			occ++;
+			app[grid]++;
+			/*cout << hex << id << ", " << grid << endl;
+			system("pause");*/
+		}
+		else
+		{
+			if(id > con / 2)
 			{
+				cout << "Error " << id << " : " << con << endl;
+				system("pause");
+			}
+			else
+			{
+				isLeaf = false;
 				l = new Node(this, 0);
 				r = new Node(this, 1);
-				isLeaf = false;
 			}
 		}
 	}
-	occ = 0;
-	app = 0;
+	if(!isLeaf)
+	{
+		unsigned long long idx = con;
+		while(idx / 2 != id) idx >>= 1;
+		if(idx & 1) r->insert(con, grid);
+		else l->insert(con, grid);
+	}
 }
 
-Node* Config::head = new Node(NULL, 1);
+unsigned long long Config::largo[65536][17] = {0};
+double Config::dict[65536][16] = {0};
 unsigned long Config::count = 0;
 unsigned long Config::coverage = 0;
 Config::Config(void)
@@ -157,149 +175,194 @@ void Config::save()
 
 void Config::savecfg(int i, int j)
 {
-	Node* iter = head;
-	unsigned long cfg = 1;
-	int depth = 0;
-	while(!iter->isLeaf)
+	unsigned long long subcon = 0;
+	for(int k = -1; k < 3; k ++)
 	{
-		if(get(i + dic[depth][0], j + dic[depth][1])) iter = iter->r;
-		else iter = iter->l;
-		depth ++;
+		for(int l = -1; l < 3; l ++)
+		{
+			subcon += subcon + get(i + k, j + l);
+		}
 	}
-	iter->occ ++;
-	iter->app += origin[i][j];
+	int grid = 0;
+	for(int k = 0; k < 2; k ++)
+	{
+		for(int l = 0; l < 2; l ++)
+		{
+			if(i + k >= 0 && i + k < 20 && j + l >= 0 && j + l < 20)
+			grid += grid + origin[i + k][j + l];
+		}
+	}
+	largo[subcon][grid + 1] ++;
+	largo[subcon][0]++;
 }
 
 void Config::record(string fileName)
 {
-	unsigned long error = 0;
-	unsigned long total = 0;
-	unsigned long bad = 0;
 	ofstream out(fileName.c_str());
-	traverse(head, out, error, total, bad);
-	cout << "Bad : Error : Total = " << bad << " : " << error << " : " << total;
+	for(int i = 0; i < 65536; i ++)
+	{
+		if(largo[i][0])
+		{
+			double UB = 0;
+			for(int j = 0; j < 16; j ++)
+			{
+				double prob = (largo[i][j + 1] + 0.0) / largo[i][0];
+				if(prob == 0) out << -1 << ", ";
+				else out << -log(prob) << ", ";
+			}
+		}
+		else for(int j = 0; j < 16; j ++)
+		{
+			if(j == 0) out << 0 << ", ";
+			else out << -1 << ", ";
+		}
+		out << endl;
+	}
 	out.close();
-}
-
-void Config::traverse(Node* np, ofstream& out, unsigned long& error, unsigned long& total, unsigned long& bad)
-{
-	if(np->isLeaf)
-	{
-		double prob = 0;
-		if(np->occ >= 5) prob = (np->app + 0.0) / np->occ;
-		bool flag = false;
-		if(prob > THRE && prob <= 1 - THRE && np->occ > 100)
-		{
-			flag = true;
-		}
-		total += np->occ;
-		out << np->id << ", " << prob << ", ";
-		if(prob <= DIV)
-		{
-			error += np->occ - np->app;
-			if(flag) bad += np-> occ - np-> app;
-		}
-		else
-		{
-			error += np->app;
-			if(flag) bad += np->app;
-		}
-	}
-	else
-	{
-		out << np-> id << ", " << -1 << ", ";
-		traverse(np->l, out, error, total, bad);
-		traverse(np->r, out, error, total, bad);
-	}
 }
 
 void Config::generate(string file)
 {
 	ifstream in(file.c_str());
+	int i = 0;
 	while(!in.eof())
 	{
-		unsigned long long id;
-		double prob;
-		char tmp;
-		in >> id;
-		in >> tmp;
-		in >> prob;
-		in >> tmp;
-		Node* n = head;
-		int i = 0;
-		unsigned long long idl = id;
-		while(1)
+		for(int j = 0; j < 16; j ++)
 		{
-			idl >>= 1;
-			if(idl == 0) break;
-			i ++;
+			double lp;
+			char tmp;
+			in >> lp;
+			in >> tmp;
+			dict[i][j] = lp;
 		}
-		while(1)
-		{
-			i --;
-			if(n->id == id)
-			{
-				if(prob != -1)
-				{
-					n->prob = prob;
-				}
-				else
-				{
-					n->l = new Node(n, 0);
-					n->r = new Node(n, 1);
-					n->isLeaf = false;
-				}
-				break;
-			}
-			else
-			{
-				if(n->isLeaf)
-				{
-					cout << "Error: " << id << " " << n->id << endl;
-					system("pause");
-				}
-				unsigned long long ids = id >> i;
-				if(ids >= 2 * n-> id + 1)
-				{
-					n = n->r;
-				}
-				else 
-				{
-					n = n->l;
-				}
-			}
-		}
+		i ++;
 	}
+	cout << "Data Read:" << i << endl;
 	in.close();
-	/**/
 }
 
 void Config::lookup()
 {
-	bool tmp[WID][WID];
-	for(int i = 0; i < WID; i ++)
+	bool tmp[WID][WID] = {0};
+	for(int i = 0; i < WID * 2 - 1; i ++)
 	{
-		for(int j = 0; j < WID; j ++)
+		for(int j = 0; j <= i; j ++)
 		{
-			Node* n = head;
-			int k = 0;
-			while(1)
+			int k = i - j; // want to determine tmp[j][k]
+			if(j >= WID || k >= WID) continue;
+			bool local[6][6] = {0};
+			for(int l = -3; l < 3; l ++)
 			{
-				if(n->isLeaf)
+				for(int m = -3; m < 3; m ++)
 				{
-					tmp[i][j] = n->prob >= DIV;
-					break;
-				}
-				else
-				{
-					if(get(i + dic[k][0], j + dic[k][1]))
-					{
-						n = n->r;
-					}
-					else n = n->l;
-					k ++;
+					local[l + 3][m + 3] = get(j + l, k + m);
 				}
 			}
+			bool gue[4][4] = {0};
+			for(int l = -2; l < 2; l ++)
+			{
+				for(int m = -2; m < 2; m ++)
+				{
+					if(l < 0 || l + m < 0)
+					{
+						bool vert = 0;
+						if(l + j >= 0 && l + j < WID)
+						{
+							if(m + k >= 0 && m + k < WID)
+							{
+								vert = tmp[l + j][m + k];
+							}
+						}
+						gue[l + 2][m + 2] = vert;
+					}
+				}
+			}
+			double likelihood[2] = {0};
+			double maxp[2] = {0};
+			for(int brute = 0; brute < 32; brute ++)
+			{
+				int bp = brute;
+				bool dest = brute & 1;
+				for(int l = 0; l < 2; l ++)
+				{
+					for(int m = -1; m < 2; m ++)
+					{
+						if(l + m >= 0)
+						{
+							gue[l + 2][m + 2] = bp & 1;
+							bp >>= 1;
+						}
+					}
+				}
+				double lprob = 0;
+				for(int l = 0; l < 3; l ++)
+				{
+					for(int m = 0; m < 3; m ++)
+					{
+						unsigned subcon = 0;
+						unsigned grid = 0;
+						for(int n = 0; n < 4; n ++)
+						{
+							for(int o = 0; o < 4; o ++)
+							{
+								subcon += subcon + local[l + n][m + o];
+							}
+						}
+						for(int n = 0; n < 2; n ++)
+						{
+							for(int o = 0; o < 2; o ++)
+							{
+								grid += grid + gue[l + n][m + o];
+							}
+						}
+						if(dict[subcon][grid]< 0)
+						{
+							lprob = -1;
+							break;
+						}
+						else lprob += dict[subcon][grid];
+					}
+					if(lprob < 0)
+						break;
+				}
+				double cp = exp(-lprob);
+				/*cout << cp << " to " << dest << endl;
+				for(int i = 0; i < 4; i ++)
+				{
+					for(int j = 0; j < 4; j ++)
+					{
+						cout << gue[i][j] << " ";
+					}
+					cout << endl;
+				}*/
+				if(lprob >=0)
+				{
+					if(cp >= maxp[dest])
+						maxp[dest] = cp;
+					likelihood[dest] += cp;
+				}
+			}
+			bool maxlikely = false;
+			double gap = maxp[0] / maxp[1];
+			if(gap < 1)
+			{
+				gap = 1 / gap;
+				maxlikely = true;
+			}
+			if(gap >= 3) tmp[j][k] = maxlikely;
+			else tmp[j][k] = (likelihood[1] > likelihood[0] * BENCH);
+			/*for(int l = 0; l < 6; l ++)
+			{
+				for(int m = 0; m < 6; m ++)
+				{
+					cout << local[l][m] << " ";
+				}
+				cout << endl;
+			}
+			cout << "likelihood : " << likelihood[0] << " vs " << likelihood[1] << endl;
+			cout << "certainty : " << gap << " " << maxlikely << endl;
+			cout << "j: " << j << "k: " << k << " b: " << tmp[j][k] << endl;
+			system("pause");*/
 		}
 	}
 	memcpy(fig, tmp, WID * WID * sizeof(bool));
@@ -364,8 +427,7 @@ int Config::check()
 		}
 		cout << endl;
 	}
-	system("pause");
-	/**/
+	system("pause");*/
 	return cnt;
 }
 
