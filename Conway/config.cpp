@@ -59,8 +59,10 @@ void Node::insert(unsigned long long con, int grid)
 	}
 }
 
-unsigned long long Config::largo[65536][17] = {0};
-double Config::dict[65536][16] = {0};
+int Config::largo[1048576][16][5] = {0};
+double Config::dict[1048576][16][4] = {0};
+double Config::dict1[65536][16] = {0};
+int Config::largo1[65536][17] = {0};
 unsigned long Config::count = 0;
 unsigned long Config::coverage = 0;
 Config::Config(void)
@@ -178,12 +180,38 @@ void Config::savecfg(int i, int j)
 	unsigned long long subcon = 0;
 	for(int k = -1; k < 3; k ++)
 	{
-		for(int l = -1; l < 3; l ++)
+		for(int l = -2; l < 3; l ++)
 		{
 			subcon += subcon + get(i + k, j + l);
 		}
 	}
 	int grid = 0;
+	for(int k = 0; k < 2; k ++)
+	{
+		for(int l = -1; l < 1; l ++)
+		{
+			if(i + k >= 0 && i + k < 20 && j + l >= 0 && j + l < 20)
+			grid += grid + origin[i + k][j + l];
+		}
+	}
+	int pred = 0;
+	for(int k = 0; k < 2; k ++)
+	{
+		if(i + k >= 0 && i + k < 20 && j + 1 >= 0 && j + 1 < 20)
+			pred += pred + origin[i + k][j + 1];
+	}
+	largo[subcon][grid][0] ++;
+	largo[subcon][grid][pred + 1]++;
+
+	subcon = 0;
+	for(int k = -1; k < 3; k ++)
+	{
+		for(int l = -1; l < 3; l ++)
+		{
+			subcon += subcon + get(i + k, j + l);
+		}
+	}
+	grid = 0;
 	for(int k = 0; k < 2; k ++)
 	{
 		for(int l = 0; l < 2; l ++)
@@ -192,31 +220,52 @@ void Config::savecfg(int i, int j)
 			grid += grid + origin[i + k][j + l];
 		}
 	}
-	largo[subcon][grid + 1] ++;
-	largo[subcon][0]++;
+	largo1[subcon][0]++;
+	largo1[subcon][grid + 1]++;
 }
 
 void Config::record(string fileName)
 {
 	ofstream out(fileName.c_str());
-	for(int i = 0; i < 65536; i ++)
+	out << " ";
+	for(int i = 0; i < 1048576; i ++)
 	{
-		if(largo[i][0])
+		for(int j = 0; j < 16; j ++)
 		{
-			double UB = 0;
-			for(int j = 0; j < 16; j ++)
+			if(largo[i][j][0] < 5)
 			{
-				double prob = (largo[i][j + 1] + 0.0) / largo[i][0];
-				if(prob == 0) out << -1 << ", ";
-				else out << -log(prob) << ", ";
+				for(int k = 0; k < 4; k ++)
+				{
+					out << -(int)(k != 0) << " ";
+				}
+			}
+			else
+			{
+				for(int k = 0; k < 4; k ++)
+				{
+					if(largo[i][j][k + 1] == 0) out << -1 << " ";
+					else out << -log((largo[i][j][k + 1] + 0.0) / largo[i][j][0]) << " ";
+				}
 			}
 		}
-		else for(int j = 0; j < 16; j ++)
+	}
+	for(int i = 0; i < 65536; i ++)
+	{
+		if(largo1[i][0] == 0)
 		{
-			if(j == 0) out << 0 << ", ";
-			else out << -1 << ", ";
+			for(int k = 0; k < 16; k ++)
+			{
+				out << -(int)(k != 0) << " ";
+			}
 		}
-		out << endl;
+		else
+		{
+			for(int k = 0; k < 16; k ++)
+			{
+				if(largo1[i][k+1] == 0) out << -1 << " ";
+				else out << -log((largo1[i][k + 1] + 0.0) / largo1[i][0]) << " ";
+			}
+		}
 	}
 	out.close();
 }
@@ -225,15 +274,23 @@ void Config::generate(string file)
 {
 	ifstream in(file.c_str());
 	int i = 0;
-	while(!in.eof())
+	while(i < 1048576)
 	{
 		for(int j = 0; j < 16; j ++)
 		{
-			double lp;
-			char tmp;
-			in >> lp;
-			in >> tmp;
-			dict[i][j] = lp;
+			for(int k = 0; k < 4; k ++)
+			{
+				in >> dict[i][j][k];
+			}
+		}
+		i ++;
+	}
+	i = 0;
+	while(i < 65536)
+	{
+		for(int j = 0; j < 16; j ++)
+		{
+			in >> dict1[i][j];
 		}
 		i ++;
 	}
@@ -244,125 +301,151 @@ void Config::generate(string file)
 void Config::lookup()
 {
 	bool tmp[WID][WID] = {0};
-	for(int i = 0; i < WID * 2 - 1; i ++)
+	for(int i = 0; i < WID; i = i + 2)
 	{
-		for(int j = 0; j <= i; j ++)
+		for(int j = 0; j < WID; j = j + 2)
 		{
-			int k = i - j; // want to determine tmp[j][k]
-			if(j >= WID || k >= WID) continue;
-			bool local[6][6] = {0};
-			for(int l = -3; l < 3; l ++)
+			double prob[16];
+			for(int k = 0; k < 16; k ++)
 			{
-				for(int m = -3; m < 3; m ++)
+				prob[k] = -1;
+			}
+
+			int hsubcon = 0, hgrid = 0;
+			for(int k = -1; k < 3; k ++)
+			{
+				for(int l = -3; l < 2; l ++)
 				{
-					local[l + 3][m + 3] = get(j + l, k + m);
+					hsubcon += hsubcon + get(i + k, j + l);
 				}
 			}
-			bool gue[4][4] = {0};
-			for(int l = -2; l < 2; l ++)
+			//cout << "\nHsubcon: " << hsubcon << " ";
+
+			for(int k = 0; k < 2; k++)
 			{
-				for(int m = -2; m < 2; m ++)
+				for(int l = -2; l < 0; l ++)
 				{
-					if(l < 0 || l + m < 0)
+					if(k + i < WID && j + l >= 0)
+						hgrid += hgrid + tmp[i + k][j + l];
+					else hgrid *= 2;
+				}
+			}
+			//cout << "Hgrid: " << hgrid << " ";
+
+			int vsubcon = 0, vgrid = 0;
+			for(int k = -1; k < 3; k ++)
+			{
+				for(int l = -3; l < 2; l ++)
+				{
+					vsubcon += vsubcon + get(i + l, j + k);
+				}
+			}			
+			//cout << "\nVsubcon: " << vsubcon << " ";
+
+			for(int k = 0; k < 2; k++)
+			{
+				for(int l = -2; l < 0; l ++)
+				{
+					if(k + j < WID && i + l >= 0)
+						vgrid += vgrid + tmp[i + l][j + k];
+					else vgrid *= 2;
+				}
+			}		
+			//cout << "Vgrid: " << vgrid << " ";
+
+			int fillIn = 0;
+			double tprob = -1;
+			for(int a1 = 0; a1 < 2; a1 ++)
+			{
+				for(int a2 = 0; a2 < 2; a2++)
+				{
+					if(dict[vsubcon][vgrid][2 * a1 + a2] == -1) continue;
+					double vprob1 = dict[vsubcon][vgrid][2 * a1 + a2];
+					for(int a3 = 0; a3 < 2; a3 ++)
 					{
-						bool vert = 0;
-						if(l + j >= 0 && l + j < WID)
+						if(dict[hsubcon][hgrid][2 * a1 + a3] == -1) continue;
+						double hprob1 = dict[hsubcon][hgrid][2 * a1 + a3];
+						if(vprob1 + hprob1 >= 10) //very unlikely
+							continue;
+						for(int a4 = 0; a4 < 2; a4 ++)
 						{
-							if(m + k >= 0 && m + k < WID)
+							tmp[i][j] = a1;
+							tmp[i][j + 1] = a2;
+							tmp[i+1][j] = a3;
+							tmp[i+1][j+1] = a4;
+							int index = 8 * a1 + 4 * a2 + 2 * a3 + a4;
+							prob[index] = vprob1 + hprob1;
+							int subcon = 0;							
+							for(int k = -1; k < 3; k ++)
 							{
-								vert = tmp[l + j][m + k];
+								for(int l = -1; l < 3; l ++)
+								{
+									subcon += subcon + get(i + k, j + l);
+								}
 							}
-						}
-						gue[l + 2][m + 2] = vert;
-					}
-				}
-			}
-			double likelihood[2] = {0};
-			double maxp[2] = {0};
-			for(int brute = 0; brute < 32; brute ++)
-			{
-				int bp = brute;
-				bool dest = brute & 1;
-				for(int l = 0; l < 2; l ++)
-				{
-					for(int m = -1; m < 2; m ++)
-					{
-						if(l + m >= 0)
-						{
-							gue[l + 2][m + 2] = bp & 1;
-							bp >>= 1;
-						}
-					}
-				}
-				double lprob = 0;
-				for(int l = 0; l < 3; l ++)
-				{
-					for(int m = 0; m < 3; m ++)
-					{
-						unsigned subcon = 0;
-						unsigned grid = 0;
-						for(int n = 0; n < 4; n ++)
-						{
-							for(int o = 0; o < 4; o ++)
+							if(dict1[subcon][index] == -1) continue;
+							prob[index] += 3 * dict1[subcon][index];
+							int hsubcon1 = 0, hgrid1 = 0;
+							for(int k = -1; k < 3; k ++)
 							{
-								subcon += subcon + local[l + n][m + o];
+								for(int l = -2; l < 3; l ++)
+								{
+									hsubcon1 += hsubcon1 + get(i + k, j + l);
+								}
 							}
-						}
-						for(int n = 0; n < 2; n ++)
-						{
-							for(int o = 0; o < 2; o ++)
+							for(int k = 0; k < 2; k++)
 							{
-								grid += grid + gue[l + n][m + o];
+								for(int l = -1; l < 1; l ++)
+								{
+									if(k + i < WID && j+l >=0)
+										hgrid1 += hgrid1 + tmp[i + k][j + l];
+									else hgrid1 *= 2;
+								}
 							}
+							//cout << "\n" << index << " Hsubcon1: " << hsubcon1 << " Hgrid1: " << hgrid1 << " ";
+							int vsubcon1 = 0, vgrid1 = 0;
+							for(int k = -1; k < 3; k ++)
+							{
+								for(int l = -2; l < 3; l ++)
+								{
+									vsubcon1 += vsubcon1 + get(i + l, j + k);
+								}
+							}
+							for(int k = 0; k < 2; k++)
+							{
+								for(int l = -1; l < 1; l ++)
+								{
+									if(k + j < WID && i + l >= 0)
+										vgrid1 += vgrid1 + tmp[i + l][k + j];
+									else vgrid1 *= 2;
+								}
+							}
+							
+							//cout << "Vsubcon1: " << vsubcon1 << " Vgrid1: " << vgrid1 << " ";
+							if(dict[hsubcon1][hgrid1][2 * a2 + a4] == -1) continue;
+							if(dict[vsubcon1][vgrid1][2 * a3 + a4] == -1) continue;
+							prob[index] += dict[hsubcon1][hgrid1][2 * a2 + a4];
+							prob[index] += dict[vsubcon1][vgrid1][2 * a3 + a4];
+							if(index == 0 || prob[index] < tprob)
+							{
+								fillIn = index;
+								tprob = prob[index];
+							}
+							//cout << " prob: " << prob[index];
 						}
-						if(dict[subcon][grid]< 0)
-						{
-							lprob = -1;
-							break;
-						}
-						else lprob += dict[subcon][grid];
 					}
-					if(lprob < 0)
-						break;
-				}
-				double cp = exp(-lprob);
-				/*cout << cp << " to " << dest << endl;
-				for(int i = 0; i < 4; i ++)
-				{
-					for(int j = 0; j < 4; j ++)
-					{
-						cout << gue[i][j] << " ";
-					}
-					cout << endl;
-				}*/
-				if(lprob >=0)
-				{
-					if(cp >= maxp[dest])
-						maxp[dest] = cp;
-					likelihood[dest] += cp;
 				}
 			}
-			bool maxlikely = false;
-			double gap = maxp[0] / maxp[1];
-			if(gap < 1)
+			
+			//system("pause");
+			for(int k = 1; k > -1; k --)
 			{
-				gap = 1 / gap;
-				maxlikely = true;
-			}
-			if(gap >= 3) tmp[j][k] = maxlikely;
-			else tmp[j][k] = (likelihood[1] > likelihood[0] * BENCH);
-			/*for(int l = 0; l < 6; l ++)
-			{
-				for(int m = 0; m < 6; m ++)
+				for(int l = 1; l > -1; l --)
 				{
-					cout << local[l][m] << " ";
+					tmp[i + k][j + l] = fillIn % 2;
+					fillIn /= 2;
 				}
-				cout << endl;
 			}
-			cout << "likelihood : " << likelihood[0] << " vs " << likelihood[1] << endl;
-			cout << "certainty : " << gap << " " << maxlikely << endl;
-			cout << "j: " << j << "k: " << k << " b: " << tmp[j][k] << endl;
-			system("pause");*/
 		}
 	}
 	memcpy(fig, tmp, WID * WID * sizeof(bool));

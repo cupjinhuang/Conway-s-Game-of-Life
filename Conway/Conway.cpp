@@ -27,7 +27,7 @@ void train()
 		Config cfg;
 		cfg.update(STEP);
 		cfg.save();
-		int cov = (Config::count * 25 >> 15);
+		int cov = (Config::count * 25 >> 17);
 		if(cov != percent)
 		{
 			cout << "\b\b\b\b" << setw(4) << cov;
@@ -63,6 +63,6 @@ void test()
 		if(percent == 100) break;
 	}
 	cout << endl << "Finished!" << endl;
-	cout << "Error rate:" << (error + 0.0) / 1024 << endl;
+	cout << "Error rate:" << (error + 0.0) / (400 * 1024) << endl;
 	system("pause");
 }

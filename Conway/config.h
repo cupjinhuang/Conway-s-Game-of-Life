@@ -2,7 +2,7 @@
 #define WID 20
 #define THRE 0.08
 #define DIV 0.5
-#define STEP 1
+#define STEP 5
 #define SAMPLE 1
 #define TINYOCC 1e-5
 #define DEPTH 50
@@ -36,8 +36,10 @@ class Config
 	bool origin[WID][WID];
 	bool fig[WID][WID];
 public:
-	static double dict[65536][16];
-	static unsigned long long largo[65536][17];
+	static double dict[1048576][16][4];
+	static int largo[1048576][16][5];
+	static double dict1[65536][16];
+	static int largo1[65536][17];
 	static unsigned long coverage;
 	static unsigned long count;
 	/* static functions for training */
